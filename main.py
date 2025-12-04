@@ -1,14 +1,21 @@
 import time
 import sys
-from src.logica import TARIFA_PARADO, TARIFA_MOVIMIENTO, calcular_coste_tramo
+from src.logica import calcular_coste_tramo
+from src.configuracion import cargar_configuracion
+
+# Carga inicial de datos
+CONFIG = cargar_configuracion()
+T_PARADO = CONFIG['tarifa_parado']
+T_MOVIMIENTO = CONFIG['tarifa_movimiento']
+MONEDA = CONFIG['moneda']
 
 def mostrar_bienvenida():
     print("\n" + "┌" + "─"*40 + "┐")
     print("│ 🚕  SISTEMA DE TAXÍMETRO DIGITAL v1.0   │")
     print("└" + "─"*40 + "┘")
     print("Instrucciones:")
-    print(f" • Tarifa Parado      : {TARIFA_PARADO:.2f}€/s")
-    print(f" • Tarifa Movimiento  : {TARIFA_MOVIMIENTO:.2f}€/s")
+    print(f" • Tarifa Parado      : {T_PARADO:.2f}€/s")
+    print(f" • Tarifa Movimiento  : {T_MOVIMIENTO:.2f}€/s")
     print("-" * 42 + "\n")
 
 def imprimir_estado_intermedio(coste_tramo, tiempo_tramo, estado_anterior, total_acumulado):
