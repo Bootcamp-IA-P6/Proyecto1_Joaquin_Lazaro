@@ -1,12 +1,15 @@
-import os
+from pathlib import Path
 
-# Rutas de Archivos
-ARCHIVO_CONFIG = 'config.json'
-ARCHIVO_HISTORIAL = 'history.txt'
-ARCHIVO_USUARIOS = 'users.json'
-ARCHIVO_LOG = 'taximetro.log'
+# --- Rutas del Sistema ---
+# Se calcula dinámicamente para funcionar en cualquier SO
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Configuración por Defecto
-DEFAULT_TARIFA_PARADO = 0.02
-DEFAULT_TARIFA_MOVIMIENTO = 0.05
+ARCHIVO_USUARIOS = BASE_DIR / "users.json"
+ARCHIVO_CONFIG = BASE_DIR / "config.json"
+ARCHIVO_HISTORIAL = BASE_DIR / "history.txt"
+ARCHIVO_LOG = BASE_DIR / "taximetro.log"
+
+# --- Valores por Defecto (Fallback de Negocio) ---
+TARIFA_PARADO_DEFAULT = 2.0      # céntimos/segundo
+TARIFA_MOVIMIENTO_DEFAULT = 5.0  # céntimos/segundo
 DEFAULT_MONEDA = "€"

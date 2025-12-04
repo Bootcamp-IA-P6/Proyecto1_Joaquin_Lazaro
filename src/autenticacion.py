@@ -9,13 +9,12 @@ from src.constantes import ARCHIVO_USUARIOS
 class GestorAuth:
     def __init__(self):
         self.usuarios: Dict[str, str] = self._cargar_usuarios()
+        self.usuario_actual: Optional[str] = None
 
     def _cargar_usuarios(self) -> Dict[str, str]:
-        """Carga la base de datos de usuarios desde la constante."""
         if not os.path.exists(ARCHIVO_USUARIOS):
-            logging.warning("Archivo de usuarios no encontrado. Se iniciará vacío.")
+            logging.warning("BD usuarios no encontrada. Iniciando vacía.")
             return {}
-        
         try:
             with open(ARCHIVO_USUARIOS, 'r', encoding='utf-8') as f:
                 return json.load(f)
@@ -24,7 +23,6 @@ class GestorAuth:
             return {}
 
     def _guardar_usuarios(self) -> bool:
-        """Persiste los usuarios en la ruta definida."""
         try:
             with open(ARCHIVO_USUARIOS, 'w', encoding='utf-8') as f:
                 json.dump(self.usuarios, f, indent=4)
@@ -33,8 +31,6 @@ class GestorAuth:
             logging.error(f"Error guardando usuarios: {e}")
             return False
 
-    # ... (El resto de métodos _generar_hash, registrar_usuario, login NO CAMBIAN) ...
-    # Copia el resto de métodos tal cual los tenías en el paso anterior.
     def _generar_hash(self, password: str, salt: Optional[str] = None) -> str:
         if salt is None:
             salt = secrets.token_hex(16)
@@ -43,15 +39,28 @@ class GestorAuth:
         return f"{salt}${hash_obj.hexdigest()}"
 
     def registrar_usuario(self, username: str, password: str) -> bool:
-        if username in self.usuarios: return False
+        if username in self.usuarios:
+            return False
         self.usuarios[username] = self._generar_hash(password)
         return self._guardar_usuarios()
 
     def login(self, username: str, password: str) -> bool:
-        if username not in self.usuarios: return False
+        if username not in self.usuarios:
+            return False
+        
         almacenado = self.usuarios[username]
         try:
             salt, _ = almacenado.split('$')
-        except ValueError: return False
-        check_hash = self._generar_hash(password, salt)
-        return secrets.compare_digest(almacenado, check_hash)
+            check_hash = self._generar_hash(password, salt)
+            if secrets.compare_digest(almacenado, check_hash):
+                self.usuario_actual = username
+                logging.info(f"Login exitoso: {username}")
+                return True
+        except ValueError:
+            logging.error(f"Hash corrupto para usuario {username}")
+            
+        return False
+
+    def logout(self):
+        logging.info(f"Logout: {self.usuario_actual}")
+        self.usuario_actual = None

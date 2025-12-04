@@ -2,91 +2,80 @@ import pytest
 import time
 from unittest.mock import MagicMock, patch
 from src.modelo import Taximetro, Trayecto, Estado
-from src.configuracion import GestorConfiguracion
-from src.gestor_historial import GestorHistorial
 
-# --- FIXTURES ---
+# Definimos tarifas de prueba para no depender del config.json real
+TARIFA_PARADO = 2.0
+TARIFA_MOVIMIENTO = 5.0
 
-@pytest.fixture
-def mock_config():
-    """Mock del Gestor de Configuración."""
-    config = MagicMock(spec=GestorConfiguracion)
-    config.get_tarifa.side_effect = lambda tipo: 2.0 if tipo == "parado" else 5.0
-    config.moneda = "€"
-    return config
-
-@pytest.fixture
-def mock_historial():
-    """Mock del Gestor de Historial."""
-    historial = MagicMock(spec=GestorHistorial)
-    historial.guardar.return_value = True
-    return historial
-
-@pytest.fixture
-def taximetro(mock_config, mock_historial):
-    """
-    Instancia un taxímetro inyectándole los Mocks.
-    Ahora cumplimos con la nueva firma __init__(config, historial).
-    """
-    return Taximetro(mock_config, mock_historial)
-
-# --- TESTS TRAYECTO (Lógica pura, sin cambios) ---
-
-def test_calculo_trayecto_parado():
-    trayecto = Trayecto(tarifa_parado=2.0, tarifa_movimiento=5.0)
-    
-    # Setup determinista
-    trayecto.inicio = 1000
-    trayecto.ultimo_cambio = 1000
-    
-    # Avanzamos 10s
-    with patch('time.time', return_value=1010):
-        coste, tiempo = trayecto.cambiar_estado(Estado.MOVIMIENTO)
-    
-    assert tiempo == 10
-    assert coste == 20.0
-    assert trayecto.estado_actual == Estado.MOVIMIENTO
-
-def test_calculo_trayecto_movimiento():
-    trayecto = Trayecto(2.0, 5.0)
-    trayecto.estado_actual = Estado.MOVIMIENTO
-    trayecto.ultimo_cambio = 1000
-    
-    with patch('time.time', return_value=1005):
-        coste, tiempo = trayecto.cambiar_estado(Estado.PARADO)
+class TestTrayecto:
+    @patch('src.modelo.time.time')
+    def test_calculo_coste_basico(self, mock_time):
+        """Verifica que el trayecto calcula bien el coste en parado y movimiento."""
+        # 1. Inicio (T=0)
+        mock_time.return_value = 1000.0 
+        trayecto = Trayecto(TARIFA_PARADO, TARIFA_MOVIMIENTO)
         
-    assert tiempo == 5
-    assert coste == 25.0
+        # 2. Pasan 10 segundos PARADO
+        mock_time.return_value = 1010.0
+        coste, tiempo, _ = trayecto._calcular_tramo_pendiente()
+        
+        assert tiempo == 10.0
+        assert coste == 10.0 * TARIFA_PARADO  # 20.0
 
-# --- TESTS TAXIMETRO (Integración con Mocks) ---
+    @patch('src.modelo.time.time')
+    def test_cambio_estados(self, mock_time):
+        """Simula un viaje completo: Inicio -> Mover -> Parar -> Fin"""
+        # T=0: Inicio (Parado por defecto)
+        mock_time.return_value = 0.0
+        trayecto = Trayecto(TARIFA_PARADO, TARIFA_MOVIMIENTO)
+        
+        # T=10: Arrancamos (Estuvo 10s parado)
+        mock_time.return_value = 10.0
+        trayecto.alternar_marcha() # Cambia a MOVIMIENTO
+        
+        assert trayecto.tiempo_parado == 10.0
+        assert trayecto.coste_parado == 20.0 # 10s * 2€
+        assert trayecto.estado_actual == Estado.MOVIMIENTO
 
-def test_flujo_completo_taximetro(taximetro, mock_historial):
-    """Prueba que el Taxímetro orqueste todo y LLAME al historial al final."""
-    
-    # 1. Iniciar
-    trayecto = taximetro.iniciar_carrera()
-    trayecto.ultimo_cambio = 1000 # T=0
-    
-    # 2. Moverse (10s Parado)
-    with patch('time.time', return_value=1010):
-        taximetro.cambiar_estado("movimiento")
-    
-    # 3. Finalizar (10s Movimiento)
-    with patch('time.time', return_value=1020):
-        resumen = taximetro.finalizar_carrera()
-    
-    # Validaciones de negocio
-    assert resumen.total_coste == 70.0 # (10*2) + (10*5)
-    
-    # VALIDACIÓN CLAVE DE INTERACCIÓN:
-    # Verificamos que el método .guardar() del mock fue llamado exactamente una vez
-    mock_historial.guardar.assert_called_once()
-    
-    # Verificamos que se llamó con los argumentos correctos
-    args, _ = mock_historial.guardar.call_args
-    assert args[0] == resumen  # El primer argumento fue el objeto trayecto
-    assert args[1] == "€"      # El segundo fue la moneda
+        # T=30: Frenamos (Estuvo 20s en movimiento)
+        mock_time.return_value = 30.0
+        trayecto.alternar_marcha() # Cambia a PARADO
+        
+        assert trayecto.tiempo_movimiento == 20.0
+        assert trayecto.coste_movimiento == 100.0 # 20s * 5€
+        assert trayecto.estado_actual == Estado.PARADO
 
-def test_error_cambio_sin_carrera(taximetro):
-    with pytest.raises(RuntimeError):
-        taximetro.cambiar_estado("movimiento")
+        # T=40: Finalizamos (Estuvo 10s parado extra)
+        mock_time.return_value = 40.0
+        trayecto.finalizar()
+
+        # Verificaciones finales
+        assert trayecto.total_tiempo == 40.0
+        # Coste total: 20 (inicio) + 100 (marcha) + 20 (final) = 140
+        assert trayecto.total_coste == 140.0
+
+
+class TestTaximetroFacade:
+    def test_ciclo_vida_taximetro(self):
+        """Prueba la integración del controlador Taximetro con mocks."""
+        # Mockeamos las dependencias para no escribir en disco real
+        mock_conf = MagicMock()
+        mock_conf.get_tarifa.side_effect = lambda k: 2.0 if k == "parado" else 5.0
+        mock_conf.moneda = "€"
+        
+        mock_hist = MagicMock()
+        
+        taxi = Taximetro(mock_conf, mock_hist)
+        
+        # 1. Iniciar
+        taxi.iniciar_trayecto()
+        assert taxi.en_trayecto is True
+        assert taxi.estado_carrera == "parado" # type: ignore
+        
+        # 2. Finalizar
+        resumen = taxi.finalizar_trayecto()
+        
+        assert taxi.en_trayecto is False
+        assert resumen is not None
+        # Verificar que se llamó al historial para guardar
+        mock_hist.guardar.assert_called_once()
