@@ -31,7 +31,7 @@ Sigue estos pasos para levantar el proyecto en tu máquina local.
 
 ### 1. Clonar el Repositorio
 ```bash
-git clone https://github.com/Bootcamp-IA-P6/Proyecto1_Joaquin_Lazaro/ptaximetro-f5.git
+git clone https://github.com/Bootcamp-IA-P6/Proyecto1_Joaquin_Lazaro.git
 cd Proyecto1_Joaquin_Lazaro
 ```
 
@@ -85,7 +85,7 @@ Una vez arrancado Docker, el sistema expone dos puertos:
 
 El proyecto sigue una arquitectura de microservicios orquestada con Docker Compose:
 
-```mermaid
+```
 graph TD
     User[Usuario (Navegador)] -->|Puerto 8080| Frontend[Nginx (Frontend HTML/JS)]
     Frontend -->|API Fetch| Backend[FastAPI (Backend Python)]
